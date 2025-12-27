@@ -25,6 +25,7 @@
         const History = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>);
         const Beaker = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4.5 3h15"></path><path d="M6 3v16a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V3"></path><path d="M6 14h12"></path></svg>);
         const Home = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>);
+        const Flask = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 3h6v6l5 10H4l5-10V3z"></path><path d="M9 3h6"></path></svg>);
 
         const BorateDroppingTestApp = () => {
             const [currentStep, setCurrentStep] = useState(0);
@@ -36,11 +37,13 @@
             const [poolVolume, setPoolVolume] = useState('');
             const [showCalculator, setShowCalculator] = useState(false);
             const [targetLevel, setTargetLevel] = useState('50');
+            const [isCalibration, setIsCalibration] = useState(false);
+            const [historyFilter, setHistoryFilter] = useState('all'); // 'all', 'pool', 'calibration'
 
             useEffect(() => {
                 const savedVolume = BorateStor.getPoolVolume();
                 if (savedVolume) setPoolVolume(savedVolume);
-                setTestHistory(BorateStor.getPoolTests());
+                setTestHistory(BorateStor.getTests());
             }, []);
 
             const handlePoolVolumeChange = (value) => {
@@ -83,7 +86,8 @@
                 const savedTest = BorateStor.saveTest({
                     drops: drops,
                     dropsR0009: Number(dropsR0009) || 0,
-                    ppm: ppm
+                    ppm: ppm,
+                    isCalibration: isCalibration
                 });
                 
                 setTestHistory([savedTest, ...testHistory]);
@@ -95,6 +99,7 @@
                 setDropsR0010('');
                 setDropsR0009('');
                 setTestComplete(false);
+                setIsCalibration(false);
             };
 
             const handleInputChange = (key, value) => {
@@ -102,9 +107,22 @@
                 else if (key === 'dropsR0009') setDropsR0009(value);
             };
 
+            const deleteTest = (id) => {
+                if (confirm('Delete this test record?')) {
+                    BorateStor.deleteTest(id);
+                    setTestHistory(testHistory.filter(t => t.id !== id));
+                }
+            };
+
+            const getFilteredHistory = () => {
+                if (historyFilter === 'pool') return testHistory.filter(t => !t.isCalibration);
+                if (historyFilter === 'calibration') return testHistory.filter(t => t.isCalibration);
+                return testHistory;
+            };
+
             // Calculator View
             if (showCalculator) {
-                const currentPpm = testHistory.length > 0 ? testHistory[0].ppm : 0;
+                const currentPpm = testHistory.filter(t => !t.isCalibration)[0]?.ppm || 0;
                 const calculation = poolVolume ? BorateCaclulations.calculateBoraxDosage(currentPpm, Number(targetLevel), Number(poolVolume)) : null;
                 const boricCalc = poolVolume ? BorateCaclulations.calculateBoricAcidDosage(currentPpm, Number(targetLevel), Number(poolVolume)) : null;
                 
@@ -129,9 +147,9 @@
 
                                 <div className="space-y-4 mb-6">
                                     <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Current Borate Level</label>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Current Borate Level (from pool tests only)</label>
                                         <div className="text-3xl font-bold text-purple-900">{currentPpm} ppm</div>
-                                        {testHistory.length === 0 && <p className="text-sm text-amber-600 mt-1">⚠️ Complete a test first to calculate dosage</p>}
+                                        {testHistory.filter(t => !t.isCalibration).length === 0 && <p className="text-sm text-amber-600 mt-1">⚠️ Complete a pool test first to calculate dosage</p>}
                                     </div>
 
                                     <div>
@@ -149,7 +167,7 @@
                                     </div>
                                 </div>
 
-                                {calculation && boricCalc && testHistory.length > 0 && (
+                                {calculation && boricCalc && testHistory.filter(t => !t.isCalibration).length > 0 && (
                                     <div className="bg-green-50 border-2 border-green-500 rounded-lg p-6 mb-6">
                                         <h3 className="text-xl font-bold text-green-900 mb-4">Increase needed: {calculation.ppmIncrease} ppm</h3>
                                         <div className="space-y-4">
@@ -157,7 +175,7 @@
                                                 <h4 className="font-bold text-green-900 mb-2">Option 1: Borax (20 Mule Team)</h4>
                                                 <p>• <strong>{calculation.boraxLbs} lbs</strong> ({calculation.boraxOz} oz)</p>
                                                 <p>• <strong>{calculation.boxesNeeded} boxes</strong> (76 oz each)</p>
-                                                <p>• Plus <strong>{calculation.acidGallons} gallons</strong> muriatic acid</p>
+                                                <p>• Plus <strong>{calculation.acidGallons} gal</strong> muriatic acid</p>
                                             </div>
                                             <div className="bg-white rounded-lg p-4 border border-green-300">
                                                 <h4 className="font-bold text-green-900 mb-2">Option 2: Boric Acid (Recommended)</h4>
@@ -191,30 +209,77 @@
 
             // History View
             if (showHistory) {
+                const filteredHistory = getFilteredHistory();
+                const poolTests = testHistory.filter(t => !t.isCalibration);
+                const calibrationTests = testHistory.filter(t => t.isCalibration);
+
                 return (
                     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-blue-100 p-4">
                         <div className="max-w-2xl mx-auto">
                             <div className="bg-white rounded-lg shadow-lg p-6">
-                                <div className="flex items-center justify-between mb-6">
+                                <div className="flex items-center justify-between mb-4">
                                     <h2 className="text-2xl font-bold text-blue-900 flex items-center gap-2"><History />Test History</h2>
                                     <button onClick={() => setShowHistory(false)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Back</button>
                                 </div>
-                                {testHistory.length === 0 ? (
-                                    <p className="text-gray-500 text-center py-8">No tests recorded yet.</p>
+
+                                {/* Filter Tabs */}
+                                <div className="flex gap-2 mb-4">
+                                    <button 
+                                        onClick={() => setHistoryFilter('all')}
+                                        className={`px-4 py-2 rounded-lg font-medium transition ${historyFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                                    >
+                                        All ({testHistory.length})
+                                    </button>
+                                    <button 
+                                        onClick={() => setHistoryFilter('pool')}
+                                        className={`px-4 py-2 rounded-lg font-medium transition ${historyFilter === 'pool' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                                    >
+                                        🏊 Pool ({poolTests.length})
+                                    </button>
+                                    <button 
+                                        onClick={() => setHistoryFilter('calibration')}
+                                        className={`px-4 py-2 rounded-lg font-medium transition ${historyFilter === 'calibration' ? 'bg-amber-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                                    >
+                                        🧪 Calibration ({calibrationTests.length})
+                                    </button>
+                                </div>
+
+                                {filteredHistory.length === 0 ? (
+                                    <p className="text-gray-500 text-center py-8">No {historyFilter !== 'all' ? historyFilter : ''} tests recorded yet.</p>
                                 ) : (
                                     <div className="space-y-4">
-                                        {testHistory.map((test) => (
-                                            <div key={test.id} className="border border-blue-200 rounded-lg p-4 bg-blue-50">
+                                        {filteredHistory.map((test) => (
+                                            <div key={test.id} className={`border rounded-lg p-4 ${test.isCalibration ? 'border-amber-300 bg-amber-50' : 'border-blue-200 bg-blue-50'}`}>
                                                 <div className="flex justify-between items-start mb-2">
-                                                    <span className="text-sm text-gray-600">{new Date(test.date).toLocaleString()}</span>
-                                                    <span className="text-2xl font-bold text-blue-900">{test.ppm} ppm</span>
+                                                    <div>
+                                                        <span className="text-sm text-gray-600">{new Date(test.date).toLocaleString()}</span>
+                                                        {test.isCalibration && (
+                                                            <span className="ml-2 px-2 py-0.5 bg-amber-200 text-amber-800 text-xs rounded-full">CALIBRATION</span>
+                                                        )}
+                                                    </div>
+                                                    <span className={`text-2xl font-bold ${test.isCalibration ? 'text-amber-900' : 'text-blue-900'}`}>{test.ppm} ppm</span>
                                                 </div>
-                                                <div className="text-sm text-gray-700">
-                                                    <p>R-0009 drops: {test.dropsR0009}</p>
-                                                    <p>R-0010 drops: {test.drops}</p>
+                                                <div className="text-sm text-gray-700 flex justify-between items-center">
+                                                    <div>
+                                                        <p>R-0009 drops: {test.dropsR0009}</p>
+                                                        <p>R-0010 drops: {test.drops}</p>
+                                                    </div>
+                                                    <button onClick={() => deleteTest(test.id)} className="text-red-500 text-sm hover:text-red-700">Delete</button>
                                                 </div>
                                             </div>
                                         ))}
+                                    </div>
+                                )}
+
+                                {/* Comparison */}
+                                {poolTests.length > 1 && historyFilter !== 'calibration' && (
+                                    <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                        <h3 className="font-semibold text-yellow-900 mb-2">Pool Test Comparison</h3>
+                                        <p className="text-sm text-yellow-800">
+                                            Latest: {poolTests[0].ppm} ppm<br />
+                                            Previous: {poolTests[1].ppm} ppm<br />
+                                            Change: {poolTests[0].ppm - poolTests[1].ppm > 0 ? '+' : ''}{poolTests[0].ppm - poolTests[1].ppm} ppm
+                                        </p>
                                     </div>
                                 )}
                             </div>
@@ -232,21 +297,30 @@
                         <div className="max-w-2xl mx-auto">
                             <div className="bg-white rounded-lg shadow-lg p-6">
                                 <div className="text-center mb-6">
-                                    <div className="inline-flex items-center justify-center w-16 h-16 bg-green-500 rounded-full mb-4 text-white"><Beaker /></div>
-                                    <h2 className="text-3xl font-bold text-green-900 mb-2">Test Complete!</h2>
+                                    <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 text-white ${isCalibration ? 'bg-amber-500' : 'bg-green-500'}`}>
+                                        {isCalibration ? <Flask /> : <Beaker />}
+                                    </div>
+                                    <h2 className="text-3xl font-bold text-green-900 mb-2">
+                                        {isCalibration ? 'Calibration Complete!' : 'Test Complete!'}
+                                    </h2>
+                                    {isCalibration && (
+                                        <p className="text-amber-600 text-sm">This test is marked as calibration and won't affect pool analytics</p>
+                                    )}
                                 </div>
 
-                                <div className={`border-2 rounded-lg p-6 mb-6 ${status.inRange ? 'bg-green-50 border-green-500' : 'bg-amber-50 border-amber-500'}`}>
+                                <div className={`border-2 rounded-lg p-6 mb-6 ${isCalibration ? 'bg-amber-50 border-amber-500' : status.inRange ? 'bg-green-50 border-green-500' : 'bg-amber-50 border-amber-500'}`}>
                                     <div className="text-center">
                                         <p className="text-gray-700 mb-2">Borate Level</p>
-                                        <p className={`text-5xl font-bold mb-2 ${status.inRange ? 'text-green-900' : 'text-amber-900'}`}>{ppm} ppm</p>
+                                        <p className={`text-5xl font-bold mb-2 ${isCalibration ? 'text-amber-900' : status.inRange ? 'text-green-900' : 'text-amber-900'}`}>{ppm} ppm</p>
                                         <p className="text-sm text-gray-600">({dropsR0010} drops × 4)</p>
-                                        <p className={`text-sm mt-2 ${status.inRange ? 'text-green-700' : 'text-amber-700'}`}>{status.message}</p>
+                                        {!isCalibration && <p className={`text-sm mt-2 ${status.inRange ? 'text-green-700' : 'text-amber-700'}`}>{status.message}</p>}
                                     </div>
                                 </div>
 
                                 <div className="space-y-3">
-                                    <button onClick={() => setShowCalculator(true)} className="w-full px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition">🧮 Calculate Borax Needed</button>
+                                    {!isCalibration && (
+                                        <button onClick={() => setShowCalculator(true)} className="w-full px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition">🧮 Calculate Borax Needed</button>
+                                    )}
                                     <button onClick={resetTest} className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-2"><RotateCcw />New Test</button>
                                     <button onClick={() => setShowHistory(true)} className="w-full px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition flex items-center justify-center gap-2"><History />View History ({testHistory.length})</button>
                                     <a href="index.html" className="block w-full px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-center flex items-center justify-center gap-2"><Home />Dashboard</a>
@@ -270,19 +344,42 @@
                             <p className="text-center text-sm text-gray-600 mt-2">✓ No prerequisites needed - test at any time</p>
                         </div>
 
+                        {/* Calibration Toggle */}
+                        <div className="bg-white rounded-lg shadow-lg mb-4 p-4">
+                            <label className="flex items-center justify-between cursor-pointer">
+                                <div>
+                                    <span className="font-semibold text-gray-700">🧪 Calibration Test</span>
+                                    <p className="text-sm text-gray-500">Mark this as a calibration test (won't affect pool analytics)</p>
+                                </div>
+                                <div className="relative">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={isCalibration} 
+                                        onChange={(e) => setIsCalibration(e.target.checked)}
+                                        className="sr-only"
+                                    />
+                                    <div className={`w-14 h-8 rounded-full transition ${isCalibration ? 'bg-amber-500' : 'bg-gray-300'}`}>
+                                        <div className={`w-6 h-6 bg-white rounded-full shadow transform transition mt-1 ${isCalibration ? 'translate-x-7' : 'translate-x-1'}`}></div>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+
+                        {/* Progress Bar */}
                         <div className="bg-white rounded-lg shadow-lg mb-4 p-4">
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-sm font-medium text-gray-700">Progress</span>
                                 <span className="text-sm font-medium text-blue-600">Step {currentStep + 1} of {steps.length}</span>
                             </div>
                             <div className="w-full bg-gray-200 rounded-full h-2">
-                                <div className="bg-blue-600 h-2 rounded-full transition-all duration-300" style={{ width: `${((currentStep + 1) / steps.length) * 100}%` }} />
+                                <div className={`h-2 rounded-full transition-all duration-300 ${isCalibration ? 'bg-amber-500' : 'bg-blue-600'}`} style={{ width: `${((currentStep + 1) / steps.length) * 100}%` }} />
                             </div>
                         </div>
 
+                        {/* Current Step */}
                         <div className="bg-white rounded-lg shadow-lg p-6 mb-4">
                             <div className="mb-4">
-                                <div className="inline-block bg-blue-600 text-white px-3 py-1 rounded-full text-sm font-semibold mb-2">Step {step.number}</div>
+                                <div className={`inline-block text-white px-3 py-1 rounded-full text-sm font-semibold mb-2 ${isCalibration ? 'bg-amber-500' : 'bg-blue-600'}`}>Step {step.number}</div>
                                 <h2 className="text-2xl font-bold text-gray-900 mb-2">{step.title}</h2>
                             </div>
 
@@ -312,11 +409,13 @@
                             </div>
                         </div>
 
+                        {/* Navigation */}
                         <div className="flex gap-3">
                             <button onClick={handlePrevious} disabled={currentStep === 0} className={`flex-1 px-6 py-3 rounded-lg font-semibold transition flex items-center justify-center gap-2 ${currentStep === 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-600 text-white hover:bg-gray-700'}`}><ChevronLeft />Previous</button>
-                            <button onClick={handleNext} className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition flex items-center justify-center gap-2">{currentStep === steps.length - 1 ? 'Complete Test' : 'Next'}<ChevronRight /></button>
+                            <button onClick={handleNext} className={`flex-1 px-6 py-3 text-white rounded-lg font-semibold transition flex items-center justify-center gap-2 ${isCalibration ? 'bg-amber-500 hover:bg-amber-600' : 'bg-blue-600 hover:bg-blue-700'}`}>{currentStep === steps.length - 1 ? 'Complete Test' : 'Next'}<ChevronRight /></button>
                         </div>
 
+                        {/* History/Calculator Buttons */}
                         {testHistory.length > 0 && (
                             <div className="mt-3 flex gap-3">
                                 <button onClick={() => setShowHistory(true)} className="flex-1 px-6 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition flex items-center justify-center gap-2"><History />History ({testHistory.length})</button>
