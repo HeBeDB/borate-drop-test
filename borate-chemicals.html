@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chemical Log - Borate Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="src/borate-calculations.js"></script>
+    <script src="src/borate-storage.js"></script>
+    <style>
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-orange-50 to-orange-100 min-h-screen">
+    <div id="root"></div>
+
+    <script>
+        let showAddForm = false;
+
+        function render() {
+            document.getElementById('root').innerHTML = ChemicalsApp();
+        }
+
+        function ChemicalsApp() {
+            const additions = BorateStor.getAdditions();
+            const poolVolume = BorateStor.getPoolVolume();
+
+            return `
+                <div class="max-w-2xl mx-auto p-4">
+                    <!-- Header -->
+                    <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h1 class="text-2xl font-bold text-gray-900">➕ Chemical Log</h1>
+                                <p class="text-gray-600 mt-1">Track borax and boric acid additions</p>
+                            </div>
+                            <a href="index.html" class="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition">
+                                ← Dashboard
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Add Button / Form -->
+                    ${showAddForm ? renderAddForm(poolVolume) : `
+                        <button onclick="toggleAddForm()" class="w-full mb-6 px-6 py-4 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition font-semibold text-lg">
+                            ➕ Log New Chemical Addition
+                        </button>
+                    `}
+
+                    <!-- Additions List -->
+                    <div class="bg-white rounded-lg shadow-lg p-6">
+                        <h2 class="text-xl font-bold text-gray-900 mb-4">Addition History</h2>
+                        
+                        ${additions.length === 0 ? `
+                            <div class="text-center py-8 text-gray-500">
+                                <p class="text-4xl mb-2">📋</p>
+                                <p>No chemical additions logged yet</p>
+                                <p class="text-sm mt-2">Log your borax or boric acid additions to track effectiveness</p>
+                            </div>
+                        ` : `
+                            <div class="space-y-4">
+                                ${additions.map(a => `
+                                    <div class="border border-orange-200 rounded-lg p-4 bg-orange-50">
+                                        <div class="flex justify-between items-start mb-2">
+                                            <div>
+                                                <span class="font-bold text-orange-900">${formatChemical(a.chemical)}</span>
+                                                <span class="text-gray-600 ml-2">${a.amount} ${a.unit}</span>
+                                            </div>
+                                            <span class="text-sm text-gray-500">${formatDate(a.date)}</span>
+                                        </div>
+                                        
+                                        <div class="grid grid-cols-2 gap-4 text-sm">
+                                            <div>
+                                                <span class="text-gray-600">Expected:</span>
+                                                <span class="font-semibold ${a.expectedIncrease ? 'text-blue-600' : 'text-gray-400'}">
+                                                    ${a.expectedIncrease ? '+' + a.expectedIncrease + ' ppm' : 'Not set'}
+                                                </span>
+                                            </div>
+                                            <div>
+                                                <span class="text-gray-600">Actual:</span>
+                                                ${a.actualIncrease !== null ? `
+                                                    <span class="font-semibold ${a.actualIncrease >= (a.expectedIncrease || 0) ? 'text-green-600' : 'text-amber-600'}">
+                                                        +${a.actualIncrease} ppm
+                                                    </span>
+                                                ` : `
+                                                    <button onclick="promptActualIncrease(${a.id})" class="text-blue-600 underline">
+                                                        Record result
+                                                    </button>
+                                                `}
+                                            </div>
+                                        </div>
+
+                                        ${a.notes ? `<p class="text-sm text-gray-600 mt-2 italic">${a.notes}</p>` : ''}
+
+                                        <button onclick="deleteAddition(${a.id})" class="text-red-500 text-sm mt-2 hover:text-red-700">
+                                            Delete
+                                        </button>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `}
+                    </div>
+
+                    <!-- Tips -->
+                    <div class="bg-blue-50 border border-blue-300 rounded-lg p-6 mt-6">
+                        <h3 class="font-bold text-blue-900 mb-3">💡 Tips</h3>
+                        <ul class="text-sm text-blue-800 space-y-1 ml-4 list-disc">
+                            <li>Log additions when you add chemicals to track effectiveness</li>
+                            <li>Record actual results 48 hours after adding chemicals</li>
+                            <li>Compare expected vs actual to calibrate future calculations</li>
+                            <li>Use the Calculator to determine proper amounts before adding</li>
+                        </ul>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderAddForm(poolVolume) {
+            return `
+                <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-bold text-gray-900">Log Addition</h2>
+                        <button onclick="toggleAddForm()" class="text-gray-500 hover:text-gray-700">✕</button>
+                    </div>
+
+                    <form onsubmit="saveAddition(event)" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Chemical Type</label>
+                            <select id="chemical" required class="w-full px-4 py-3 border-2 border-orange-300 rounded-lg">
+                                <option value="borax">Borax (20 Mule Team)</option>
+                                <option value="boric_acid">Boric Acid</option>
+                            </select>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Amount</label>
+                                <input type="number" id="amount" required min="0" step="0.1"
+                                    class="w-full px-4 py-3 border-2 border-orange-300 rounded-lg"
+                                    placeholder="0">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Unit</label>
+                                <select id="unit" required class="w-full px-4 py-3 border-2 border-orange-300 rounded-lg">
+                                    <option value="lbs">Pounds (lbs)</option>
+                                    <option value="oz">Ounces (oz)</option>
+                                    <option value="boxes">Boxes (76 oz)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Expected Increase (ppm)</label>
+                            <input type="number" id="expectedIncrease" min="0" step="1"
+                                class="w-full px-4 py-3 border-2 border-orange-300 rounded-lg"
+                                placeholder="Optional - from calculator">
+                            <p class="text-sm text-gray-500 mt-1">
+                                <a href="borate-calculator.html" class="text-orange-600 underline">Use Calculator</a> to determine expected increase
+                            </p>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Notes (optional)</label>
+                            <textarea id="notes" rows="2" class="w-full px-4 py-3 border-2 border-orange-300 rounded-lg"
+                                placeholder="Any notes about this addition..."></textarea>
+                        </div>
+
+                        <div class="flex gap-3">
+                            <button type="button" onclick="toggleAddForm()" class="flex-1 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
+                                Cancel
+                            </button>
+                            <button type="submit" class="flex-1 px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition font-semibold">
+                                Save Addition
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            `;
+        }
+
+        function toggleAddForm() {
+            showAddForm = !showAddForm;
+            render();
+        }
+
+        function saveAddition(event) {
+            event.preventDefault();
+            
+            const addition = {
+                chemical: document.getElementById('chemical').value,
+                amount: Number(document.getElementById('amount').value),
+                unit: document.getElementById('unit').value,
+                expectedIncrease: Number(document.getElementById('expectedIncrease').value) || null,
+                notes: document.getElementById('notes').value
+            };
+
+            BorateStor.saveAddition(addition);
+            showAddForm = false;
+            render();
+            showToast('Addition logged!');
+        }
+
+        function promptActualIncrease(id) {
+            const actual = prompt('Enter the actual PPM increase measured after 48 hours:');
+            if (actual !== null && actual !== '') {
+                BorateStor.updateAdditionResult(id, Number(actual));
+                render();
+                showToast('Result recorded!');
+            }
+        }
+
+        function deleteAddition(id) {
+            if (confirm('Delete this addition record?')) {
+                BorateStor.deleteAddition(id);
+                render();
+                showToast('Addition deleted');
+            }
+        }
+
+        function formatChemical(chemical) {
+            const names = {
+                'borax': 'Borax',
+                'boric_acid': 'Boric Acid'
+            };
+            return names[chemical] || chemical;
+        }
+
+        function formatDate(isoDate) {
+            return new Date(isoDate).toLocaleDateString();
+        }
+
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.className = 'fixed bottom-4 right-4 bg-gray-800 text-white px-6 py-3 rounded-lg shadow-lg z-50';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // Initial render
+        render();
+    </script>
+</body>
+</html>

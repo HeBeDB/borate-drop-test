@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dosage Calculator - Borate Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="src/borate-calculations.js"></script>
+    <script src="src/borate-storage.js"></script>
+    <style>
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-indigo-50 to-indigo-100 min-h-screen">
+    <div id="root"></div>
+
+    <script>
+        function CalculatorApp() {
+            const poolVolume = BorateStor.getPoolVolume() || '';
+            const latestTest = BorateStor.getLatestTest();
+            const currentPpm = latestTest ? latestTest.ppm : 0;
+
+            return `
+                <div class="max-w-2xl mx-auto p-4">
+                    <!-- Header -->
+                    <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h1 class="text-2xl font-bold text-gray-900">🧮 Dosage Calculator</h1>
+                                <p class="text-gray-600 mt-1">Calculate borax or boric acid needed</p>
+                            </div>
+                            <a href="index.html" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
+                                ← Dashboard
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Input Form -->
+                    <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                        <h2 class="text-xl font-bold text-gray-900 mb-4">Enter Parameters</h2>
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Current Borate Level (ppm)</label>
+                                <input type="number" id="currentPpm" value="${currentPpm}" min="0" max="100" step="1"
+                                    class="w-full px-4 py-3 text-xl border-2 border-indigo-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    placeholder="0" onchange="calculate()">
+                                ${latestTest ? `<p class="text-sm text-green-600 mt-1">✓ Pre-filled from your last test</p>` : 
+                                    `<p class="text-sm text-amber-600 mt-1">⚠️ No test data - enter manually or run a test first</p>`}
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Target Borate Level (ppm)</label>
+                                <select id="targetPpm" class="w-full px-4 py-3 text-xl border-2 border-indigo-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    onchange="calculate()">
+                                    <option value="30">30 ppm - Minimum effective</option>
+                                    <option value="40">40 ppm - Good balance</option>
+                                    <option value="50" selected>50 ppm - Maximum (best for SWG)</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Pool Volume (gallons)</label>
+                                <input type="number" id="poolVolume" value="${poolVolume}" min="1000" step="500"
+                                    class="w-full px-4 py-3 text-xl border-2 border-indigo-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    placeholder="e.g., 36000" onchange="saveAndCalculate(this.value)">
+                                <p class="text-sm text-gray-500 mt-1">Saved automatically for future use</p>
+                            </div>
+
+                            <button onclick="calculate()" class="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-semibold text-lg">
+                                Calculate Dosage
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Results -->
+                    <div id="results"></div>
+
+                    <!-- Prerequisites Info -->
+                    <div class="bg-amber-50 border border-amber-300 rounded-lg p-6 mb-6">
+                        <h3 class="font-bold text-amber-900 mb-3">⚠️ Before Adding Chemicals</h3>
+                        <p class="text-sm text-amber-800 mb-3">Ensure your water chemistry meets these prerequisites:</p>
+                        <ul class="text-sm text-amber-800 space-y-1 ml-4 list-disc">
+                            <li><strong>pH ≤ 7.4</strong> (borax raises pH significantly)</li>
+                            <li><strong>Total Alkalinity < 140 ppm</strong> (ideally 80-90 ppm)</li>
+                            <li><strong>Calcium Hardness < 350 ppm</strong></li>
+                            <li><strong>Never exceed 50 ppm</strong> borate level (EPA maximum)</li>
+                        </ul>
+                    </div>
+
+                    <!-- Info -->
+                    <div class="bg-blue-50 border border-blue-300 rounded-lg p-6">
+                        <h3 class="font-bold text-blue-900 mb-3">💡 About Borates</h3>
+                        <ul class="text-sm text-blue-800 space-y-1 ml-4 list-disc">
+                            <li><strong>pH Buffering:</strong> Prevents pH from rising</li>
+                            <li><strong>Algae Prevention:</strong> Reduces chlorine demand by ~33%</li>
+                            <li><strong>Water Feel:</strong> Creates softer, silkier water</li>
+                            <li><strong>Long-Lasting:</strong> Only lost through draining/backwashing</li>
+                        </ul>
+                    </div>
+                </div>
+            `;
+        }
+
+        function saveAndCalculate(volume) {
+            if (volume && volume > 0) {
+                BorateStor.setPoolVolume(volume);
+            }
+            calculate();
+        }
+
+        function calculate() {
+            const currentPpm = Number(document.getElementById('currentPpm').value) || 0;
+            const targetPpm = Number(document.getElementById('targetPpm').value) || 50;
+            const poolVolume = Number(document.getElementById('poolVolume').value) || 0;
+
+            const resultsDiv = document.getElementById('results');
+
+            if (!poolVolume || poolVolume <= 0) {
+                resultsDiv.innerHTML = `
+                    <div class="bg-gray-50 border border-gray-300 rounded-lg p-6 mb-6 text-center">
+                        <p class="text-gray-600">Enter your pool volume to see calculations</p>
+                    </div>
+                `;
+                return;
+            }
+
+            if (currentPpm >= targetPpm) {
+                resultsDiv.innerHTML = `
+                    <div class="bg-green-50 border-2 border-green-500 rounded-lg p-6 mb-6 text-center">
+                        <div class="text-4xl mb-2">✓</div>
+                        <h3 class="text-xl font-bold text-green-900 mb-2">No Addition Needed!</h3>
+                        <p class="text-green-700">Current level (${currentPpm} ppm) meets or exceeds target (${targetPpm} ppm)</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const borax = BorateCaclulations.calculateBoraxDosage(currentPpm, targetPpm, poolVolume);
+            const boricAcid = BorateCaclulations.calculateBoricAcidDosage(currentPpm, targetPpm, poolVolume);
+            const costs = BorateCaclulations.compareCosts(targetPpm - currentPpm, poolVolume);
+
+            resultsDiv.innerHTML = `
+                <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                    <div class="text-center mb-6">
+                        <p class="text-gray-600">To increase from</p>
+                        <p class="text-3xl font-bold text-indigo-900">${currentPpm} → ${targetPpm} ppm</p>
+                        <p class="text-lg text-indigo-600">(+${borax.ppmIncrease} ppm increase)</p>
+                    </div>
+
+                    <div class="grid md:grid-cols-2 gap-6">
+                        <!-- Borax Option -->
+                        <div class="bg-orange-50 border-2 border-orange-300 rounded-lg p-4">
+                            <h3 class="text-lg font-bold text-orange-900 mb-3">Option 1: Borax</h3>
+                            <p class="text-sm text-orange-700 mb-3">(20 Mule Team)</p>
+                            
+                            <div class="space-y-2 text-gray-700">
+                                <p class="text-2xl font-bold text-orange-900">${borax.boraxLbs} lbs</p>
+                                <p>• ${borax.boraxOz} oz total</p>
+                                <p>• ${borax.boxesNeeded} boxes (76 oz each)</p>
+                                <p class="text-red-700 font-semibold">• Plus ${borax.acidGallons} gal muriatic acid</p>
+                            </div>
+
+                            ${costs ? `
+                                <div class="mt-4 pt-4 border-t border-orange-300">
+                                    <p class="text-sm text-gray-600">Estimated cost:</p>
+                                    <p class="text-xl font-bold text-orange-900">$${costs.borax.totalCost.toFixed(2)}</p>
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        <!-- Boric Acid Option -->
+                        <div class="bg-green-50 border-2 border-green-500 rounded-lg p-4">
+                            <div class="flex justify-between items-start">
+                                <h3 class="text-lg font-bold text-green-900 mb-3">Option 2: Boric Acid</h3>
+                                <span class="bg-green-600 text-white text-xs px-2 py-1 rounded">RECOMMENDED</span>
+                            </div>
+                            <p class="text-sm text-green-700 mb-3">(Pure boric acid powder)</p>
+                            
+                            <div class="space-y-2 text-gray-700">
+                                <p class="text-2xl font-bold text-green-900">${boricAcid.boricAcidLbs} lbs</p>
+                                <p>• ${boricAcid.boricAcidOz} oz total</p>
+                                <p class="text-green-700 font-semibold">• No acid needed!</p>
+                                <p class="text-green-700">• pH neutral application</p>
+                            </div>
+
+                            ${costs ? `
+                                <div class="mt-4 pt-4 border-t border-green-300">
+                                    <p class="text-sm text-gray-600">Estimated cost:</p>
+                                    <p class="text-xl font-bold text-green-900">$${costs.boricAcid.totalCost.toFixed(2)}</p>
+                                    ${costs.savings > 5 ? `<p class="text-sm text-green-600">Save $${costs.savings.toFixed(2)} vs borax!</p>` : ''}
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+
+                    <!-- Log Addition Button -->
+                    <div class="mt-6">
+                        <a href="borate-chemicals.html" class="block w-full px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-semibold text-center">
+                            📝 Log This Addition
+                        </a>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Render and auto-calculate if we have data
+        document.getElementById('root').innerHTML = CalculatorApp();
+        if (BorateStor.getPoolVolume()) {
+            calculate();
+        }
+    </script>
+</body>
+</html>
