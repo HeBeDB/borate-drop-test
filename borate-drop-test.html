@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Borate Drop Test Assistant</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="src/borate-calculations.js"></script>
+    <script src="src/borate-storage.js"></script>
+    <style>
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const ChevronLeft = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"></polyline></svg>);
+        const ChevronRight = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"></polyline></svg>);
+        const RotateCcw = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>);
+        const History = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>);
+        const Beaker = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4.5 3h15"></path><path d="M6 3v16a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V3"></path><path d="M6 14h12"></path></svg>);
+        const Home = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>);
+
+        const BorateDroppingTestApp = () => {
+            const [currentStep, setCurrentStep] = useState(0);
+            const [dropsR0010, setDropsR0010] = useState('');
+            const [dropsR0009, setDropsR0009] = useState('');
+            const [testHistory, setTestHistory] = useState([]);
+            const [showHistory, setShowHistory] = useState(false);
+            const [testComplete, setTestComplete] = useState(false);
+            const [poolVolume, setPoolVolume] = useState('');
+            const [showCalculator, setShowCalculator] = useState(false);
+            const [targetLevel, setTargetLevel] = useState('50');
+
+            useEffect(() => {
+                const savedVolume = BorateStor.getPoolVolume();
+                if (savedVolume) setPoolVolume(savedVolume);
+                setTestHistory(BorateStor.getPoolTests());
+            }, []);
+
+            const handlePoolVolumeChange = (value) => {
+                setPoolVolume(value);
+                if (value) BorateStor.setPoolVolume(value);
+            };
+
+            const steps = [
+                { number: 1, title: "Sample", reagent: "Sample", amount: "10 mL", instruction: "Fill a 10 mL sample tube or beaker to the 10 mL mark.", lookFor: "Start with 10 mL of pool water." },
+                { number: 2, title: "Neutralize Chlorine", reagent: "R-0007 (Chlorine Neutralizer)", amount: "1 Drop", instruction: "Add 1 drop of R-0007 to neutralize all chlorine/bromine.", lookFor: "Swirl to mix thoroughly. This step removes chlorine interference with the BTB indicator." },
+                { number: 3, title: "Add BTB Indicator", reagent: "BTB (Bromothymol Blue)", amount: "5 Drops", instruction: "Add 5 drops of BTB indicator.", lookFor: "The sample should turn a dark Blue. Swirl to mix." },
+                { number: 4, title: "Adjust pH (First Titration)", reagent: "R-0009 (Sulfuric Acid)", amount: "Add Dropwise", instruction: "Add R-0009 one drop at a time. Swirl thoroughly after each drop.", lookFor: "Titrate until the sample just turns a definite Yellow/Straw Color. This is the starting pH point.", requiresInput: true, inputLabel: "Number of R-0009 drops used:", inputKey: "dropsR0009" },
+                { number: 5, title: "Add Mannitol", reagent: "Mannitol Powder", amount: "1/8 to 1/4 Teaspoon", instruction: "Add powder. Stir (or use magnetic stirrer) until completely dissolved.", lookFor: "The sample must turn Yellow/Straw Color again. If borate is present, the reaction will lower the pH back to yellow." },
+                { number: 6, title: "Final Titration", reagent: "R-0010 (Calcium Buffer/NaOH)", amount: "Add Dropwise", instruction: "Add R-0010 one drop at a time. Swirl after each drop.", lookFor: "Titrate until the sample just turns the original dark Blue color (same shade as Step 3). This is the titration end-point.", requiresInput: true, inputLabel: "Number of R-0010 drops used:", inputKey: "dropsR0010" },
+                { number: 7, title: "Calculate Result", reagent: "Result", amount: "COUNT the drops", instruction: "Record the number of R-0010 drops used in Step 6.", lookFor: "Drops × 4 = Borate (ppm)" }
+            ];
+
+            const handleNext = () => {
+                const currentStepData = steps[currentStep];
+                if (currentStepData.requiresInput) {
+                    const inputValue = currentStepData.inputKey === 'dropsR0010' ? dropsR0010 : dropsR0009;
+                    if (!inputValue || inputValue === '' || isNaN(inputValue) || Number(inputValue) <= 0) {
+                        alert('Please enter a valid number of drops before continuing.');
+                        return;
+                    }
+                }
+                if (currentStep < steps.length - 1) {
+                    setCurrentStep(currentStep + 1);
+                } else {
+                    completeTest();
+                }
+            };
+
+            const handlePrevious = () => { if (currentStep > 0) setCurrentStep(currentStep - 1); };
+
+            const completeTest = () => {
+                const drops = Number(dropsR0010);
+                const ppm = BorateCaclulations.dropsToPpm(drops);
+                
+                const savedTest = BorateStor.saveTest({
+                    drops: drops,
+                    dropsR0009: Number(dropsR0009) || 0,
+                    ppm: ppm
+                });
+                
+                setTestHistory([savedTest, ...testHistory]);
+                setTestComplete(true);
+            };
+
+            const resetTest = () => {
+                setCurrentStep(0);
+                setDropsR0010('');
+                setDropsR0009('');
+                setTestComplete(false);
+            };
+
+            const handleInputChange = (key, value) => {
+                if (key === 'dropsR0010') setDropsR0010(value);
+                else if (key === 'dropsR0009') setDropsR0009(value);
+            };
+
+            // Calculator View
+            if (showCalculator) {
+                const currentPpm = testHistory.length > 0 ? testHistory[0].ppm : 0;
+                const calculation = poolVolume ? BorateCaclulations.calculateBoraxDosage(currentPpm, Number(targetLevel), Number(poolVolume)) : null;
+                const boricCalc = poolVolume ? BorateCaclulations.calculateBoricAcidDosage(currentPpm, Number(targetLevel), Number(poolVolume)) : null;
+                
+                return (
+                    <div className="min-h-screen bg-gradient-to-b from-purple-50 to-purple-100 p-4">
+                        <div className="max-w-2xl mx-auto">
+                            <div className="bg-white rounded-lg shadow-lg p-6">
+                                <div className="flex items-center justify-between mb-6">
+                                    <h2 className="text-2xl font-bold text-purple-900">Borax Calculator</h2>
+                                    <button onClick={() => setShowCalculator(false)} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition">Back</button>
+                                </div>
+
+                                <div className="bg-blue-50 border border-blue-300 rounded-lg p-4 mb-6">
+                                    <h3 className="font-bold text-blue-900 mb-2">💡 About Borates in Pools</h3>
+                                    <ul className="text-sm text-blue-800 space-y-1 ml-4 list-disc">
+                                        <li><strong>pH Buffering:</strong> Prevents pH from rising (especially important for salt water pools)</li>
+                                        <li><strong>Algae Prevention:</strong> Reduces minimum chlorine requirements by 33%</li>
+                                        <li><strong>Water Feel:</strong> Creates softer, silkier water</li>
+                                        <li><strong>Target: 30-50 ppm</strong> (50 ppm maximum per EPA standards)</li>
+                                    </ul>
+                                </div>
+
+                                <div className="space-y-4 mb-6">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Current Borate Level</label>
+                                        <div className="text-3xl font-bold text-purple-900">{currentPpm} ppm</div>
+                                        {testHistory.length === 0 && <p className="text-sm text-amber-600 mt-1">⚠️ Complete a test first to calculate dosage</p>}
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Pool Volume (gallons)</label>
+                                        <input type="number" min="1000" step="1000" value={poolVolume} onChange={(e) => handlePoolVolumeChange(e.target.value)} className="w-full px-4 py-3 text-xl border-2 border-purple-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="e.g., 36000" />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Target Borate Level</label>
+                                        <select value={targetLevel} onChange={(e) => setTargetLevel(e.target.value)} className="w-full px-4 py-3 text-xl border-2 border-purple-400 rounded-lg">
+                                            <option value="30">30 ppm - Minimum</option>
+                                            <option value="40">40 ppm - Medium</option>
+                                            <option value="50">50 ppm - Maximum (Best for SWG)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {calculation && boricCalc && testHistory.length > 0 && (
+                                    <div className="bg-green-50 border-2 border-green-500 rounded-lg p-6 mb-6">
+                                        <h3 className="text-xl font-bold text-green-900 mb-4">Increase needed: {calculation.ppmIncrease} ppm</h3>
+                                        <div className="space-y-4">
+                                            <div className="bg-white rounded-lg p-4 border border-green-300">
+                                                <h4 className="font-bold text-green-900 mb-2">Option 1: Borax (20 Mule Team)</h4>
+                                                <p>• <strong>{calculation.boraxLbs} lbs</strong> ({calculation.boraxOz} oz)</p>
+                                                <p>• <strong>{calculation.boxesNeeded} boxes</strong> (76 oz each)</p>
+                                                <p>• Plus <strong>{calculation.acidGallons} gallons</strong> muriatic acid</p>
+                                            </div>
+                                            <div className="bg-white rounded-lg p-4 border border-green-300">
+                                                <h4 className="font-bold text-green-900 mb-2">Option 2: Boric Acid (Recommended)</h4>
+                                                <p>• <strong>{boricCalc.boricAcidLbs} lbs</strong> ({boricCalc.boricAcidOz} oz)</p>
+                                                <p>• <strong>No acid needed</strong> (pH neutral)</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {calculation && calculation.ppmIncrease <= 0 && (
+                                    <div className="bg-green-50 border border-green-300 rounded-lg p-6 text-center">
+                                        <p className="text-green-900 font-semibold">✓ Borate level is optimal!</p>
+                                    </div>
+                                )}
+
+                                <div className="bg-amber-50 border border-amber-300 rounded-lg p-4">
+                                    <p className="text-sm font-semibold text-amber-900 mb-2">⚠️ Before Adding Borax/Boric Acid:</p>
+                                    <ul className="text-sm text-amber-800 space-y-1 ml-4 list-disc">
+                                        <li><strong>pH ≤ 7.4</strong> (borax raises pH significantly)</li>
+                                        <li><strong>Total Alkalinity &lt; 140 ppm</strong> (ideally 80-90 ppm)</li>
+                                        <li><strong>Calcium Hardness &lt; 350 ppm</strong></li>
+                                        <li>Never exceed 50 ppm borate level</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // History View
+            if (showHistory) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-blue-100 p-4">
+                        <div className="max-w-2xl mx-auto">
+                            <div className="bg-white rounded-lg shadow-lg p-6">
+                                <div className="flex items-center justify-between mb-6">
+                                    <h2 className="text-2xl font-bold text-blue-900 flex items-center gap-2"><History />Test History</h2>
+                                    <button onClick={() => setShowHistory(false)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Back</button>
+                                </div>
+                                {testHistory.length === 0 ? (
+                                    <p className="text-gray-500 text-center py-8">No tests recorded yet.</p>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {testHistory.map((test) => (
+                                            <div key={test.id} className="border border-blue-200 rounded-lg p-4 bg-blue-50">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <span className="text-sm text-gray-600">{new Date(test.date).toLocaleString()}</span>
+                                                    <span className="text-2xl font-bold text-blue-900">{test.ppm} ppm</span>
+                                                </div>
+                                                <div className="text-sm text-gray-700">
+                                                    <p>R-0009 drops: {test.dropsR0009}</p>
+                                                    <p>R-0010 drops: {test.drops}</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Test Complete View
+            if (testComplete) {
+                const ppm = BorateCaclulations.dropsToPpm(Number(dropsR0010));
+                const status = BorateCaclulations.checkLevel(ppm);
+                return (
+                    <div className="min-h-screen bg-gradient-to-b from-green-50 to-green-100 p-4">
+                        <div className="max-w-2xl mx-auto">
+                            <div className="bg-white rounded-lg shadow-lg p-6">
+                                <div className="text-center mb-6">
+                                    <div className="inline-flex items-center justify-center w-16 h-16 bg-green-500 rounded-full mb-4 text-white"><Beaker /></div>
+                                    <h2 className="text-3xl font-bold text-green-900 mb-2">Test Complete!</h2>
+                                </div>
+
+                                <div className={`border-2 rounded-lg p-6 mb-6 ${status.inRange ? 'bg-green-50 border-green-500' : 'bg-amber-50 border-amber-500'}`}>
+                                    <div className="text-center">
+                                        <p className="text-gray-700 mb-2">Borate Level</p>
+                                        <p className={`text-5xl font-bold mb-2 ${status.inRange ? 'text-green-900' : 'text-amber-900'}`}>{ppm} ppm</p>
+                                        <p className="text-sm text-gray-600">({dropsR0010} drops × 4)</p>
+                                        <p className={`text-sm mt-2 ${status.inRange ? 'text-green-700' : 'text-amber-700'}`}>{status.message}</p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <button onClick={() => setShowCalculator(true)} className="w-full px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition">🧮 Calculate Borax Needed</button>
+                                    <button onClick={resetTest} className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-2"><RotateCcw />New Test</button>
+                                    <button onClick={() => setShowHistory(true)} className="w-full px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition flex items-center justify-center gap-2"><History />View History ({testHistory.length})</button>
+                                    <a href="index.html" className="block w-full px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-center flex items-center justify-center gap-2"><Home />Dashboard</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Main Test View
+            const step = steps[currentStep];
+            return (
+                <div className="min-h-screen bg-gradient-to-b from-blue-50 to-blue-100 p-4">
+                    <div className="max-w-2xl mx-auto">
+                        <div className="bg-white rounded-lg shadow-lg mb-4 p-4">
+                            <div className="flex items-center justify-between">
+                                <h1 className="text-2xl font-bold text-blue-900 flex items-center gap-2"><Beaker />Borate Drop Test</h1>
+                                <a href="index.html" className="text-gray-500 hover:text-gray-700"><Home /></a>
+                            </div>
+                            <p className="text-center text-sm text-gray-600 mt-2">✓ No prerequisites needed - test at any time</p>
+                        </div>
+
+                        <div className="bg-white rounded-lg shadow-lg mb-4 p-4">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-medium text-gray-700">Progress</span>
+                                <span className="text-sm font-medium text-blue-600">Step {currentStep + 1} of {steps.length}</span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div className="bg-blue-600 h-2 rounded-full transition-all duration-300" style={{ width: `${((currentStep + 1) / steps.length) * 100}%` }} />
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-lg shadow-lg p-6 mb-4">
+                            <div className="mb-4">
+                                <div className="inline-block bg-blue-600 text-white px-3 py-1 rounded-full text-sm font-semibold mb-2">Step {step.number}</div>
+                                <h2 className="text-2xl font-bold text-gray-900 mb-2">{step.title}</h2>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="bg-blue-50 border-l-4 border-blue-600 p-4 rounded">
+                                    <p className="text-sm font-semibold text-blue-900 mb-1">Reagent</p>
+                                    <p className="text-gray-800">{step.reagent}</p>
+                                </div>
+                                <div className="bg-purple-50 border-l-4 border-purple-600 p-4 rounded">
+                                    <p className="text-sm font-semibold text-purple-900 mb-1">Amount</p>
+                                    <p className="text-gray-800">{step.amount}</p>
+                                </div>
+                                <div className="bg-green-50 border-l-4 border-green-600 p-4 rounded">
+                                    <p className="text-sm font-semibold text-green-900 mb-1">Instructions</p>
+                                    <p className="text-gray-800">{step.instruction}</p>
+                                </div>
+                                <div className="bg-yellow-50 border-l-4 border-yellow-600 p-4 rounded">
+                                    <p className="text-sm font-semibold text-yellow-900 mb-1">What to Look For</p>
+                                    <p className="text-gray-800">{step.lookFor}</p>
+                                </div>
+                                {step.requiresInput && (
+                                    <div className="bg-orange-50 border-2 border-orange-400 p-4 rounded-lg">
+                                        <label className="block text-sm font-semibold text-orange-900 mb-2">{step.inputLabel}</label>
+                                        <input type="number" min="0" step="1" value={step.inputKey === 'dropsR0010' ? dropsR0010 : dropsR0009} onChange={(e) => handleInputChange(step.inputKey, e.target.value)} className="w-full px-4 py-3 text-2xl font-bold border-2 border-orange-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="0" />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button onClick={handlePrevious} disabled={currentStep === 0} className={`flex-1 px-6 py-3 rounded-lg font-semibold transition flex items-center justify-center gap-2 ${currentStep === 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-600 text-white hover:bg-gray-700'}`}><ChevronLeft />Previous</button>
+                            <button onClick={handleNext} className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition flex items-center justify-center gap-2">{currentStep === steps.length - 1 ? 'Complete Test' : 'Next'}<ChevronRight /></button>
+                        </div>
+
+                        {testHistory.length > 0 && (
+                            <div className="mt-3 flex gap-3">
+                                <button onClick={() => setShowHistory(true)} className="flex-1 px-6 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition flex items-center justify-center gap-2"><History />History ({testHistory.length})</button>
+                                <button onClick={() => setShowCalculator(true)} className="flex-1 px-6 py-2 bg-purple-100 text-purple-700 rounded-lg font-medium hover:bg-purple-200 transition">🧮 Calculator</button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<BorateDroppingTestApp />, document.getElementById('root'));
+    </script>
+</body>
+</html>

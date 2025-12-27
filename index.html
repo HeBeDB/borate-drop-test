@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Borate Management Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="src/borate-calculations.js"></script>
+    <script src="src/borate-storage.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+        }
+        .module-card {
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .module-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-purple-50 min-h-screen">
+    <div id="root"></div>
+
+    <script>
+        // Dashboard App
+        function DashboardApp() {
+            const tests = BorateStor.getTests();
+            const poolTests = BorateStor.getPoolTests();
+            const additions = BorateStor.getAdditions();
+            const purchases = BorateStor.getPurchases();
+            const poolVolume = BorateStor.getPoolVolume();
+            const daysSinceTest = BorateStor.getDaysSinceLastTest();
+            
+            const latestTest = BorateStor.getLatestTest();
+            const currentLevel = latestTest ? latestTest.ppm : 0;
+            const levelStatus = BorateCaclulations.checkLevel(currentLevel);
+            
+            // Calculate analytics
+            const avgLevel = poolTests.length > 0 ?
+                Math.round(poolTests.reduce((sum, t) => sum + t.ppm, 0) / poolTests.length) : 0;
+            
+            const depletion = BorateCaclulations.calculateDepletionRate(poolTests);
+            const depletionRate = depletion.hasData ? depletion.ratePerMonth : 0;
+
+            return `
+                <div class="max-w-6xl mx-auto p-4">
+                    <!-- Header -->
+                    <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h1 class="text-3xl font-bold text-gray-900">🧪 Borate Management System</h1>
+                                <p class="text-gray-600 mt-1">Comprehensive pool borate testing and tracking</p>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-sm text-gray-500">Pool Volume</div>
+                                <div class="text-2xl font-bold text-blue-600">${poolVolume || '—'} gal</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Stats -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-white rounded-lg shadow p-4">
+                            <div class="text-sm text-gray-500 mb-1">Current Level</div>
+                            <div class="text-3xl font-bold ${levelStatus.inRange ? 'text-green-600' : 'text-amber-600'}">
+                                ${currentLevel} <span class="text-sm">ppm</span>
+                            </div>
+                            ${daysSinceTest !== null ? `<div class="text-xs text-gray-500 mt-1">${daysSinceTest} days ago</div>` : ''}
+                        </div>
+
+                        <div class="bg-white rounded-lg shadow p-4">
+                            <div class="text-sm text-gray-500 mb-1">Average Level</div>
+                            <div class="text-3xl font-bold text-blue-600">
+                                ${avgLevel} <span class="text-sm">ppm</span>
+                            </div>
+                            <div class="text-xs text-gray-500 mt-1">${poolTests.length} tests</div>
+                        </div>
+
+                        <div class="bg-white rounded-lg shadow p-4">
+                            <div class="text-sm text-gray-500 mb-1">Depletion Rate</div>
+                            <div class="text-3xl font-bold ${Math.abs(depletionRate) > 5 ? 'text-amber-600' : 'text-green-600'}">
+                                ${Math.abs(depletionRate).toFixed(1)}
+                            </div>
+                            <div class="text-xs text-gray-500 mt-1">ppm/month</div>
+                        </div>
+
+                        <div class="bg-white rounded-lg shadow p-4">
+                            <div class="text-sm text-gray-500 mb-1">Total Tests</div>
+                            <div class="text-3xl font-bold text-purple-600">${tests.length}</div>
+                            <div class="text-xs text-gray-500 mt-1">${additions.length} additions</div>
+                        </div>
+                    </div>
+
+                    <!-- Status Alert -->
+                    ${currentLevel > 0 && !levelStatus.inRange ? `
+                        <div class="bg-amber-50 border-l-4 border-amber-500 p-4 mb-6 rounded">
+                            <div class="flex">
+                                <div class="flex-shrink-0">⚠️</div>
+                                <div class="ml-3">
+                                    <p class="text-sm text-amber-800">
+                                        ${levelStatus.message}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    ${daysSinceTest !== null && daysSinceTest > 90 ? `
+                        <div class="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6 rounded">
+                            <div class="flex">
+                                <div class="flex-shrink-0">📅</div>
+                                <div class="ml-3">
+                                    <p class="text-sm text-blue-800">
+                                        <strong>Test reminder:</strong> It's been ${daysSinceTest} days since your last test. Consider testing your borate levels.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    <!-- Module Cards -->
+                    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+                        <!-- Test Module -->
+                        <a href="borate-drop-test.html" class="module-card bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white block">
+                            <div class="text-4xl mb-3">🧪</div>
+                            <h3 class="text-xl font-bold mb-2">Drop Test</h3>
+                            <p class="text-blue-100 text-sm mb-4">Perform borate test with step-by-step guidance and color references</p>
+                            <div class="flex items-center text-sm">
+                                <span class="bg-white bg-opacity-20 px-3 py-1 rounded-full">Start Test →</span>
+                            </div>
+                        </a>
+
+                        <!-- Analytics Module -->
+                        <a href="borate-analytics.html" class="module-card bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-lg p-6 text-white block">
+                            <div class="text-4xl mb-3">📊</div>
+                            <h3 class="text-xl font-bold mb-2">Analytics</h3>
+                            <p class="text-purple-100 text-sm mb-4">View trends, charts, and predictive analytics for borate levels</p>
+                            <div class="flex items-center text-sm">
+                                <span class="bg-white bg-opacity-20 px-3 py-1 rounded-full">View Analytics →</span>
+                            </div>
+                        </a>
+
+                        <!-- Chemical Log Module -->
+                        <a href="borate-chemicals.html" class="module-card bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow-lg p-6 text-white block">
+                            <div class="text-4xl mb-3">➕</div>
+                            <h3 class="text-xl font-bold mb-2">Chemical Log</h3>
+                            <p class="text-orange-100 text-sm mb-4">Track borax and boric acid additions with predicted vs actual results</p>
+                            <div class="flex items-center text-sm">
+                                <span class="bg-white bg-opacity-20 px-3 py-1 rounded-full">Manage Log →</span>
+                            </div>
+                        </a>
+
+                        <!-- Cost Tracking Module -->
+                        <a href="borate-costs.html" class="module-card bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white block">
+                            <div class="text-4xl mb-3">💰</div>
+                            <h3 class="text-xl font-bold mb-2">Cost Tracking</h3>
+                            <p class="text-green-100 text-sm mb-4">Monitor expenses, calculate ROI, and track chlorine savings</p>
+                            <div class="flex items-center text-sm">
+                                <span class="bg-white bg-opacity-20 px-3 py-1 rounded-full">View Costs →</span>
+                            </div>
+                        </a>
+
+                        <!-- Calculator Module -->
+                        <a href="borate-calculator.html" class="module-card bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg shadow-lg p-6 text-white block">
+                            <div class="text-4xl mb-3">🧮</div>
+                            <h3 class="text-xl font-bold mb-2">Dosage Calculator</h3>
+                            <p class="text-indigo-100 text-sm mb-4">Calculate exact borax or boric acid amounts needed for your pool</p>
+                            <div class="flex items-center text-sm">
+                                <span class="bg-white bg-opacity-20 px-3 py-1 rounded-full">Calculate →</span>
+                            </div>
+                        </a>
+
+                        <!-- Settings Module -->
+                        <a href="borate-settings.html" class="module-card bg-gradient-to-br from-gray-600 to-gray-700 rounded-lg shadow-lg p-6 text-white block">
+                            <div class="text-4xl mb-3">⚙️</div>
+                            <h3 class="text-xl font-bold mb-2">Settings & Data</h3>
+                            <p class="text-gray-300 text-sm mb-4">Configure reminders, import/export data, manage preferences</p>
+                            <div class="flex items-center text-sm">
+                                <span class="bg-white bg-opacity-20 px-3 py-1 rounded-full">Settings →</span>
+                            </div>
+                        </a>
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div class="bg-white rounded-lg shadow-lg p-6">
+                        <h3 class="text-lg font-bold text-gray-900 mb-4">Quick Actions</h3>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <a href="borate-drop-test.html" class="px-4 py-3 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition text-center text-sm font-semibold">
+                                🧪 New Test
+                            </a>
+                            <a href="borate-chemicals.html" class="px-4 py-3 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition text-center text-sm font-semibold">
+                                ➕ Log Addition
+                            </a>
+                            <a href="borate-analytics.html" class="px-4 py-3 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition text-center text-sm font-semibold">
+                                📊 View Trends
+                            </a>
+                            <a href="borate-settings.html" class="px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-center text-sm font-semibold">
+                                💾 Export Data
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Footer -->
+                    <div class="text-center mt-8 text-gray-500 text-sm">
+                        <p>Borate Management System v2.0 | All data stored locally in your browser</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Render
+        document.getElementById('root').innerHTML = DashboardApp();
+    </script>
+</body>
+</html>
